@@ -1,0 +1,56 @@
+name: CICD
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+
+jobs:
+  test:
+    name: Test Main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Test
+        run: |
+          cargo test
+
+  deploy:
+    name: Deploy Main
+    needs: [ test ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - id: auth
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.SA_KEY_JSON }}
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ secrets.PROJECT_ID}}
+      - name: Set sha_short
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      - name: Substitute Values
+        run: |
+          # substitute values depending on environment (e.g. dev, prod, staging)
+          sed -i -e 's/<cloud-run-sa>/${{ secrets.CR_SA }}/' \
+                 -e 's/<project-id>/${{ secrets.PROJECT_ID }}/' \
+                 -e 's/<service-name>/${{ secrets.CR_SERVICE_NAME }}/' \
+                 -e 's/<region>/europe-west1/' \
+                 -e 's/<min-instances>/0/' \
+                 -e 's/<max-instances>/3/' \
+                 -e 's/<commit-sha>/${{ steps.vars.outputs.sha_short }}/' \
+          ./.github/workflows/build/build.yml
+      - name: Deploy
+        run: |
+          gcloud builds submit --config ./.github/workflows/build/build.yml

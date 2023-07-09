@@ -24,3 +24,10 @@ tracing-actix-web = "0.7"
 [dev-dependencies]
 reqwest = { version = "0.11", features = ["json"] }
 once_cell = "1.7.2"
+
+[profile.release]
+opt-level = "z"  # Optimize for size.
+strip = true  # Automatically strip symbols from the binary.
+lto = true # Enable Link Time Optimization (LTO)
+codegen-units = 1 # Reduce Parallel Code Generation Units to Increase Optimization
+panic = "abort"
