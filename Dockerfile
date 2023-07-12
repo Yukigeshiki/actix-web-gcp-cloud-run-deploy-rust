@@ -1,29 +1,22 @@
-# Start with a rust alpine image
-FROM rust:1.70-alpine3.18 AS builder
-
-# This is important, see https://github.com/rust-lang/docker-rust/issues/85
-# ENV RUSTFLAGS="-C target-feature=-crt-static"
-
-# if needed, add additional dependencies here
-RUN apk add --no-cache musl-dev
-
-# set the workdir and copy the source into it
+FROM lukemathwalker/cargo-chef:latest-rust-1.70.0 as chef
 WORKDIR /app
-COPY ./ /app
+RUN apt update && apt install lld clang -y
 
-# do a release build
-RUN cargo build --release
+FROM chef as planner
+COPY . .
+
+RUN cargo chef prepare  --recipe-path recipe.json
+
+FROM chef as builder
+COPY --from=planner /app/recipe.json recipe.json
+
+RUN cargo chef cook --release --recipe-path recipe.json
+COPY . .
+
+RUN cargo build --release --bin actix-web-cloud-run
 RUN strip target/release/actix-web-cloud-run
 
-# use a plain alpine image, the alpine version needs to match the builder
-FROM alpine:3.18
-
-# if needed, install additional dependencies here
-RUN apk add --no-cache libgcc
-
-COPY --from=builder /app/target/release/actix-web-cloud-run /usr/local/bin/
-
-WORKDIR /root
-
-# set the binary as entrypoint
-CMD /usr/local/bin/actix-web-cloud-run
+FROM debian:bullseye-slim AS runtime
+WORKDIR /app
+COPY --from=builder /app/target/release/actix-web-cloud-run actix-web-cloud-run
+ENTRYPOINT ["./actix-web-cloud-run"]
